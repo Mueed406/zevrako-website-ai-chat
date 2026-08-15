@@ -1,0 +1,14 @@
+**/node_modules/
+**/dist/
+**/build/
+**/.dart_tool/
+**/.firebase/
+**/coverage/
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+**/*service-account*.json
+**/*admin*.json
+**/ignored-*.json
+.DS_Store

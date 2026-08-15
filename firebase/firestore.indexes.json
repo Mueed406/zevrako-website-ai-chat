@@ -1,0 +1,8 @@
+{
+  "indexes": [
+    { "collectionGroup": "websiteChatConversations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "workspaceId", "order": "ASCENDING" }, { "fieldPath": "updatedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "websiteChatConversations", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "workspaceId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "updatedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "websiteChatKnowledge", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "workspaceId", "order": "ASCENDING" }, { "fieldPath": "enabled", "order": "ASCENDING" }, { "fieldPath": "priority", "order": "DESCENDING" }] }
+  ],
+  "fieldOverrides": []
+}

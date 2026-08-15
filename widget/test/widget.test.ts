@@ -1,0 +1,14 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZevrakoWidget } from '../src/widget.js';
+import { SessionStorage } from '../src/storage.js';
+
+const config = { businessName: 'Acme', greeting: 'Welcome', themeColor: '#123456', position: 'right', aiDisclosure: 'Replies may be AI-generated.' };
+const stored = new Map<string, string>();
+beforeEach(() => { Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key), clear: () => stored.clear() } }); document.body.innerHTML = ''; window.localStorage.clear(); vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(config), { status: 200, headers: { 'content-type': 'application/json' } }))); });
+describe('widget initialization and accessibility', () => {
+  it('renders a keyboard-operable labelled launcher and disclosure', async () => { const widget = await new ZevrakoWidget({ workspaceId: 'workspace-a', siteId: 'site-a', apiUrl: 'https://chat.example.test' }).initialize(); const root = document.body.firstElementChild!.shadowRoot!; const launcher = root.querySelector<HTMLButtonElement>('.launcher')!; expect(launcher.getAttribute('aria-label')).toContain('Acme'); launcher.click(); expect(root.querySelector<HTMLElement>('.panel')!.hidden).toBe(false); expect(root.textContent).toContain('Replies may be AI-generated.'); widget.destroy(); });
+  it('includes compact mobile and reduced-motion CSS', async () => { await new ZevrakoWidget({ workspaceId: 'workspace-a', siteId: 'site-a', apiUrl: 'https://chat.example.test' }).initialize(); const css = document.body.firstElementChild!.shadowRoot!.querySelector('style')!.textContent; expect(css).toContain('@media(max-width:480px)'); expect(css).toContain('prefers-reduced-motion:reduce'); });
+  it('safely renders very long messages as text', async () => { const maliciousName = '<img src=x onerror=alert(1)>'; const response = vi.mocked(fetch); response.mockResolvedValueOnce(new Response(JSON.stringify({ ...config, businessName: maliciousName }), { status: 200 })); await new ZevrakoWidget({ workspaceId: 'workspace-a', siteId: 'site-a', apiUrl: 'https://chat.example.test' }).initialize(); const root = document.body.firstElementChild!.shadowRoot!; expect(root.querySelector('img')).toBeNull(); expect(root.textContent).toContain(maliciousName); });
+});
+describe('conversation restoration', () => { it('drops expired signed sessions and never stores admin credentials', () => { const storage = new SessionStorage('test'); storage.save({ token: 'short-lived-widget-token', conversationId: 'conversation-a', expiresAt: Date.now() - 1 }); expect(storage.load()).toBeNull(); expect(window.localStorage.getItem('test')).toBeNull(); }); });

@@ -1,0 +1,274 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function onlyFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function accountIsActive(uid) {
+      return get(/databases/$(database)/documents/accounts/$(uid)).data.status == 'active';
+    }
+
+    match /users/{uid} {
+      allow read: if owns(uid);
+      allow create: if owns(uid)
+        && request.resource.data.uid == uid
+        && onlyFields([
+          'uid', 'email', 'displayName', 'businessName', 'createdAt',
+          'updatedAt', 'lastActivityAt', 'appVersion', 'platform',
+          'schemaVersion'
+        ]);
+      allow update: if owns(uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'businessName', 'updatedAt', 'lastActivityAt',
+          'appVersion', 'platform'
+        ]);
+      allow delete: if false;
+    }
+
+    match /accounts/{uid} {
+      allow read: if owns(uid);
+      allow create: if owns(uid)
+        && request.resource.data.userId == uid
+        && request.resource.data.status == 'notActivated'
+        && request.resource.data.activePlanId == null
+        && request.resource.data.requestedPlanId == null
+        && request.resource.data.activatedAt == null
+        && request.resource.data.expiresAt == null
+        && request.resource.data.suspendedAt == null
+        && request.resource.data.suspensionReason == null
+        && request.resource.data.email is string
+        && request.resource.data.displayName is string
+        && request.resource.data.businessName is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.version == 1
+        && request.resource.data.schemaVersion == 1
+        && onlyFields([
+          'userId', 'email', 'displayName', 'businessName', 'status',
+          'activePlanId', 'requestedPlanId', 'billingCycle',
+          'activationRequestedAt', 'activatedAt', 'expiresAt', 'suspendedAt',
+          'suspensionReason', 'createdAt', 'updatedAt', 'version',
+          'schemaVersion'
+        ]);
+      allow update: if owns(uid)
+        && resource.data.userId == uid
+        && request.resource.data.userId == uid
+        && resource.data.status == 'notActivated'
+        && request.resource.data.status == 'activationRequested'
+        && request.resource.data.activePlanId == resource.data.activePlanId
+        && request.resource.data.activatedAt == resource.data.activatedAt
+        && request.resource.data.expiresAt == resource.data.expiresAt
+        && request.resource.data.suspendedAt == resource.data.suspendedAt
+        && request.resource.data.suspensionReason == resource.data.suspensionReason
+        && request.resource.data.requestedPlanId is string
+        && request.resource.data.requestedPlanId.size() > 0
+        && request.resource.data.billingCycle in ['monthly', 'annual']
+        && request.resource.data.activationRequestedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.version == resource.data.version + 1
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'requestedPlanId', 'billingCycle',
+          'activationRequestedAt', 'updatedAt', 'version'
+        ]);
+      allow delete: if false;
+    }
+
+    match /activationRequests/{requestId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && requestId == request.auth.uid
+        && request.resource.data.requestId == requestId
+        && request.resource.data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/accounts/$(request.auth.uid)).data.status == 'notActivated'
+        && request.resource.data.accountStatusAtRequest == 'notActivated'
+        && request.resource.data.requestedPlan is string
+        && request.resource.data.requestedPlan.size() > 0
+        && request.resource.data.registeredEmail
+          == get(/databases/$(database)/documents/accounts/$(request.auth.uid)).data.email
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 200
+        && request.resource.data.businessName is string
+        && request.resource.data.businessName.size() <= 200
+        && request.resource.data.billingCycle in ['monthly', 'annual']
+        && (request.resource.data.displayedPrice == null
+          || request.resource.data.displayedPrice is number)
+        && (request.resource.data.currency == null
+          || request.resource.data.currency in ['PKR', 'USD'])
+        && request.resource.data.requestTimestamp == request.time
+        && request.resource.data.appVersion is string
+        && request.resource.data.platform is string
+        && (request.resource.data.supportNote == null
+          || (request.resource.data.supportNote is string
+            && request.resource.data.supportNote.size() <= 1000))
+        && request.resource.data.schemaVersion == 1
+        && onlyFields([
+          'requestId', 'userId', 'registeredEmail', 'displayName',
+          'businessName', 'requestedPlan', 'billingCycle', 'displayedPrice',
+          'currency', 'requestTimestamp', 'accountStatusAtRequest',
+          'appVersion', 'platform', 'supportNote', 'schemaVersion'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /onboarding/{uid} {
+      allow read: if owns(uid) && accountIsActive(uid);
+      allow create, update: if owns(uid) && accountIsActive(uid)
+        && request.resource.data.currentStep is int
+        && request.resource.data.currentStep >= 0
+        && request.resource.data.currentStep <= 9
+        && request.resource.data.completed is bool
+        && request.resource.data.schemaVersion == 1
+        && onlyFields([
+          'currentStep', 'completedSteps', 'businessIdentity', 'niche',
+          'services', 'platforms', 'knowledgeStarter', 'configureAiLater',
+          'replyPersonality', 'requireApproval', 'completed', 'createdAt',
+          'updatedAt', 'schemaVersion'
+        ]);
+      allow delete: if false;
+    }
+
+    match /workspaceSettings/{uid} {
+      allow read: if owns(uid);
+      allow create, update: if owns(uid)
+        && request.resource.data.workspaceName is string
+        && request.resource.data.businessName is string
+        && request.resource.data.schemaVersion == 1
+        && onlyFields([
+          'workspaceName', 'businessName', 'website', 'industry', 'country',
+          'timeZone', 'currency', 'description', 'supportEmail',
+          'businessPhone', 'whatsappNumber', 'address', 'city', 'workingHours',
+          'notifications', 'interfaceLanguage', 'replyLanguage', 'dateFormat',
+          'timeFormat', 'updatedAt', 'schemaVersion'
+        ]);
+      allow delete: if false;
+    }
+
+    match /migrations/{uid} {
+      allow read: if owns(uid);
+      allow create: if owns(uid)
+        && request.resource.data.userId == uid
+        && request.resource.data.migrationId == 'pre_firebase_safe_data_v1'
+        && request.resource.data.completedAt == request.time
+        && request.resource.data.schemaVersion == 1
+        && onlyFields(['userId', 'migrationId', 'completedAt', 'schemaVersion']);
+      allow update, delete: if false;
+    }
+
+    match /oauthStates/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /workspaceVaults/{documentId=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappPhoneMappings/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /providerCredentials/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /providerAuthorizationSessions/{documentId} {
+      allow read, write: if false;
+    }
+
+    match /integrationAuditPrivate/{documentId} {
+      allow read, write: if false;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return signedIn()
+        && (request.auth.uid == workspaceId
+          || (exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+            && get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.status == 'active'));
+    }
+
+    match /workspaces/{workspaceId}/members/{uid} {
+      allow read: if isWorkspaceMember(workspaceId);
+      allow write: if false;
+    }
+
+    match /workspaces/{workspaceId}/integrations/{integrationId} {
+      allow read: if isWorkspaceMember(workspaceId);
+      allow write: if false;
+    }
+    // Website chat operator access is claim-scoped. Visitor clients use the
+    // trusted backend and have no direct Firestore permissions.
+    function isWebsiteChatOperator(workspaceId) {
+      return signedIn()
+        && request.auth.token.websiteChatOperator == true
+        && workspaceId in request.auth.token.websiteChatWorkspaceIds;
+    }
+
+    match /websiteChatWorkspaces/{workspaceId} {
+      allow read: if isWebsiteChatOperator(workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatSites/{siteId} {
+      allow read: if isWebsiteChatOperator(resource.data.workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatVisitors/{visitorId} {
+      allow read: if isWebsiteChatOperator(resource.data.workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatConversations/{conversationId} {
+      allow read: if isWebsiteChatOperator(resource.data.workspaceId);
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if isWebsiteChatOperator(
+          get(/databases/$(database)/documents/websiteChatConversations/$(conversationId)).data.workspaceId
+        );
+        allow write: if false;
+      }
+
+      match /{privateDocument=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /websiteChatKnowledge/{knowledgeId} {
+      allow read: if isWebsiteChatOperator(resource.data.workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatOperators/{operatorId} {
+      allow read: if signedIn()
+        && request.auth.uid == operatorId
+        && isWebsiteChatOperator(resource.data.workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatUsage/{workspaceId} {
+      allow read: if isWebsiteChatOperator(workspaceId);
+      allow write: if false;
+    }
+
+    match /websiteChatIntegrationHealth/{workspaceId} {
+      allow read: if isWebsiteChatOperator(workspaceId);
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
